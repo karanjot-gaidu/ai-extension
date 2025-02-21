@@ -6,11 +6,37 @@
       width: 300px;
       padding: 10px;
     }
+    .api-form {
+      margin-top: 10px;
+    }
+    input {
+      width: 100%;
+      padding: 5px;
+      margin: 5px 0;
+    }
+    .status {
+      margin-top: 5px;
+      font-size: 12px;
+    }
+    .success {
+      color: green;
+    }
+    .error {
+      color: red;
+    }
   </style>
 </head>
 <body>
-  <h2>AI Text Assistant</h2>
-  <p>Use Ctrl+Shift+G to get AI suggestions in any text area.</p>
-  <script src="content.js"></script>
+  <h2>Auto Tab</h2>
+  <p>AI assistant to auto complete text.</p>
+  
+  <div class="api-form">
+    <label for="api-key">Gemini API Key (optional):</label>
+    <input type="password" id="api-key" placeholder="Enter your API key">
+    <button id="save-api">Save API Key</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="popup.js"></script>
 </body>
 </html> 
