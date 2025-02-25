@@ -1,12 +1,16 @@
 // Track the active textarea
-let activeTextArea = null;
+let activeElement = null;
 let activeSpan = null;
 let remainingText = "";
 
 // Listen for focus events on text areas
 document.addEventListener("focusin", (event) => {
-    if (event.target.tagName.toLowerCase() === "textarea") {
-        activeTextArea = event.target;
+    const isEditable = event.target.tagName.toLowerCase() === "textarea" ||
+        (event.target.tagName.toLowerCase() === "input" && event.target.type === "text") ||
+        event.target.contentEditable === "true";
+    
+    if (isEditable) {
+        activeElement = event.target;
     }
 });
 
@@ -23,7 +27,7 @@ const chat = {
             role: "user",
             parts: [
                 {
-                    text: "System prompt: You are an AI that completes user-written text. You do not modify or repeat existing text—only generate what comes next. You are a helpful assistant that completes text based on the user's input. Also start with space if the given text ends with a complete word."
+                    text: "System prompt: You are a text and code completion model. Your task is to complete the text or code that the user is currently typing, considering the context of where they are typing. Important rules:\n\n1. Only generate the direct continuation of the text - never include explanations, greetings, or chat-like responses\n2. Consider the HTML context if provided (e.g., if inside a <p> tag, maintain HTML structure)\n3. For code, maintain the same style and indentation\n4. If the last word is complete, start with a space\n5. Keep completions concise and relevant to the current context\n6. Never introduce yourself or explain what you're doing\n7. Never use phrases like 'Here's the completion' or 'I would suggest'\n8. Just provide the direct continuation of the text or code"
                 }
             ]
         },
@@ -33,27 +37,27 @@ const chat = {
         },
         {
             role: "user",
-            parts: [{ text: "Hello, h" }]
+            parts: [{ text: "Context: <p class='description'>\nThis is a product" }]
         },
         {
             role: "model",
-            parts: [{ text: "ow are you?" }]
+            parts: [{ text: " description that highlights the key features and benefits of our solution." }]
         },
         {
             role: "user",
-            parts: [{ text: "I am good," }]
+            parts: [{ text: "Context: function calculate" }]
         },
         {
             role: "model",
-            parts: [{ text: " thanks for asking." }]
+            parts: [{ text: "Total(items) {\n    return items.reduce((sum, item) => sum + item.price, 0);\n}" }]
         },
         {
             role: "user",
-            parts: [{ text: "" }]
+            parts: [{text: "we can me"}]
         },
         {
             role: "model",
-            parts: [{ text: "" }]
+            parts: [{text: "et tomorrow at your place."}]
         }
     ]
 };
@@ -100,7 +104,7 @@ async function generateText(existingText) {
 
 // Function to insert an overlay span with predicted text
 function insertSpan(text) {
-    if (!activeTextArea) return;
+    if (!activeElement) return;
 
     remainingText = text;
     if (activeSpan) {
@@ -111,7 +115,7 @@ function insertSpan(text) {
     activeSpan.textContent = remainingText;
     
     // Copy textarea's computed style
-    const textareaStyle = window.getComputedStyle(activeTextArea);
+    const textareaStyle = window.getComputedStyle(activeElement);
     
     activeSpan.style.cssText = `
         position: absolute;
@@ -123,7 +127,7 @@ function insertSpan(text) {
         white-space: pre-wrap;
         word-wrap: break-word;
         overflow-wrap: break-word;
-        max-width: ${activeTextArea.clientWidth - 
+        max-width: ${activeElement.clientWidth - 
             (parseInt(textareaStyle.paddingLeft) + 
              parseInt(textareaStyle.paddingRight))}px;
     `;
@@ -134,62 +138,123 @@ function insertSpan(text) {
 
 // Function to update the span position
 function updateSpanPosition() {
-    if (!activeTextArea || !activeSpan) return;
-    const { top, left } = getCursorPosition(activeTextArea);
+    if (!activeElement || !activeSpan) return;
+    const { top, left } = getCursorPosition(activeElement);
     activeSpan.style.left = `${left + 1}px`;
     activeSpan.style.top = `${top + 1}px`;
 }
 
-// Function to get cursor position inside a textarea
-function getCursorPosition(textarea) {
-    // Create a mirror div to measure text
-    const mirror = document.createElement('div');
-    const style = window.getComputedStyle(textarea);
+// Function to get text content from any editable element
+function getElementText(element) {
+    if (element.tagName.toLowerCase() === "textarea" || 
+        (element.tagName.toLowerCase() === "input" && element.type === "text")) {
+        return element.value;
+    } else if (element.contentEditable === "true") {
+        return element.textContent;
+    }
+    return "";
+}
 
-    // Copy the textarea's style to the mirror
-    mirror.style.cssText = `
-        position: absolute;
-        visibility: hidden;
-        height: auto;
-        width: ${textarea.clientWidth}px;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-        font: ${style.font};
-        line-height: ${style.lineHeight};
-        padding: 0;  // Reset padding
-        border: none;
-        margin: 0;
-    `;
+// Function to set text content for any editable element
+function setElementText(element, text, start, end) {
+    if (element.tagName.toLowerCase() === "textarea" || 
+        (element.tagName.toLowerCase() === "input" && element.type === "text")) {
+        element.value = text;
+        element.selectionStart = start;
+        element.selectionEnd = end;
+    } else if (element.contentEditable === "true") {
+        element.textContent = text;
+        // Set cursor position for contentEditable
+        const range = document.createRange();
+        const sel = window.getSelection();
+        const textNode = element.firstChild || element;
+        range.setStart(textNode, start);
+        range.setEnd(textNode, end);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+}
 
-    // Create a span for the text before cursor
-    const textBeforeCursor = textarea.value.substring(0, textarea.selectionStart);
-    mirror.textContent = textBeforeCursor;
+// Update getCursorPosition to work with contentEditable
+function getCursorPosition(element) {
+    // For regular inputs and textareas
+    if (element.tagName.toLowerCase() === "textarea" || 
+        (element.tagName.toLowerCase() === "input" && element.type === "text")) {
+        // ... existing mirror code for textarea/input ...
+        const mirror = document.createElement('div');
+        const style = window.getComputedStyle(element);
+
+        mirror.style.cssText = `
+            position: absolute;
+            visibility: hidden;
+            height: auto;
+            width: ${element.clientWidth}px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            font: ${style.font};
+            line-height: ${style.lineHeight};
+            padding: 0;
+            border: none;
+            margin: 0;
+        `;
+
+        const textBeforeCursor = element.value.substring(0, element.selectionStart);
+        mirror.textContent = textBeforeCursor;
+        
+        const cursorSpan = document.createElement('span');
+        cursorSpan.textContent = '|';
+        mirror.appendChild(cursorSpan);
+
+        document.body.appendChild(mirror);
+
+        const elementRect = element.getBoundingClientRect();
+        const mirrorRect = mirror.getBoundingClientRect();
+        const cursorRect = cursorSpan.getBoundingClientRect();
+        
+        const paddingTop = parseInt(style.paddingTop, 10) || 0;
+        const paddingLeft = parseInt(style.paddingLeft, 10) || 0;
+
+        document.body.removeChild(mirror);
+
+        return {
+            top: elementRect.top + window.scrollY + paddingTop + (cursorRect.top - mirrorRect.top),
+            left: elementRect.left + window.scrollX + paddingLeft + (cursorRect.left - mirrorRect.left)
+        };
+    }
     
-    // Create a span to mark cursor position
-    const cursorSpan = document.createElement('span');
-    cursorSpan.textContent = '|';
-    mirror.appendChild(cursorSpan);
-
-    // Add mirror to document temporarily
-    document.body.appendChild(mirror);
-
-    // Get positions and measurements
-    const textareaRect = textarea.getBoundingClientRect();
-    const mirrorRect = mirror.getBoundingClientRect();
-    const cursorRect = cursorSpan.getBoundingClientRect();
+    // For contentEditable elements
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const rects = range.getClientRects();
+        
+        // Get the last rect if there are multiple lines
+        const rect = rects[rects.length] || range.getBoundingClientRect();
+        
+        // Get the computed style of the element
+        const style = window.getComputedStyle(element);
+        const elementRect = element.getBoundingClientRect();
+        
+        // Calculate offsets including padding and line height
+        const paddingTop = parseInt(style.paddingTop) || 0;
+        const paddingLeft = parseInt(style.paddingLeft) || 0;
+        const lineHeight = parseInt(style.lineHeight) || parseInt(style.fontSize) || 16;
+        
+        // Add vertical offset only for contentEditable
+        const verticalOffset = element.contentEditable === "true" ? -2 : 0;
+        
+        return {
+            top: rect.top + window.scrollY - (lineHeight - rect.height) / 2 + verticalOffset,
+            left: rect.left + window.scrollX
+        };
+    }
     
-    // Get textarea's padding
-    const paddingTop = parseInt(style.paddingTop, 10) || 0;
-    const paddingLeft = parseInt(style.paddingLeft, 10) || 0;
-
-    // Clean up
-    document.body.removeChild(mirror);
-
-    // Calculate final position
+    // Fallback to element position
+    const rect = element.getBoundingClientRect();
     return {
-        top: textareaRect.top + window.scrollY + paddingTop + (cursorRect.top - mirrorRect.top),
-        left: textareaRect.left + window.scrollX + paddingLeft + (cursorRect.left - mirrorRect.left)
+        top: rect.top + window.scrollY,
+        left: rect.left + window.scrollX
     };
 }
 
@@ -208,7 +273,7 @@ function debounce(func, wait) {
 
 // Modify the handleTyping function to include automatic suggestions
 function handleTyping(event) {
-    if (!activeTextArea) return;
+    if (!activeElement) return;
 
     // Handle existing span text matching
     if (activeSpan && remainingText.length > 0) {
@@ -230,16 +295,16 @@ function handleTyping(event) {
     }
 
     // If no span exists and we have text, trigger suggestion
-    if (!activeSpan && activeTextArea.value.trim().length > 0) {
+    if (!activeSpan && getElementText(activeElement).trim().length > 0) {
         debouncedGenerateSuggestion();
     }
 }
 
 // Create debounced version of suggestion generator
 const debouncedGenerateSuggestion = debounce(async () => {
-    if (!activeTextArea || activeSpan) return;
+    if (!activeElement || activeSpan) return;
     
-    const existingText = activeTextArea.value;
+    const existingText = getElementText(activeElement);
     if (!existingText) return;
     try {
         const generatedText = await generateText(existingText);
@@ -253,18 +318,33 @@ const debouncedGenerateSuggestion = debounce(async () => {
 
 // Replace the keydown event listener with a simpler one just for Tab
 document.addEventListener("keydown", (event) => {
-    if (activeTextArea && event.key === "Tab") {
+    if (activeElement && event.key === "Tab") {
         event.preventDefault();
         mergeSpanIntoTextarea();
     }
 });
 
+// Update mergeSpanIntoTextarea function
 function mergeSpanIntoTextarea() {
-    if (!activeTextArea || !activeSpan) return;
-    const start = activeTextArea.selectionStart;
-    activeTextArea.value =
-        activeTextArea.value.substring(0, start) + remainingText + activeTextArea.value.substring(start);
-    activeTextArea.selectionStart = activeTextArea.selectionEnd = start + remainingText.length;
+    if (!activeElement || !activeSpan) return;
+    
+    const currentText = getElementText(activeElement);
+    let cursorPos;
+    
+    if (activeElement.tagName.toLowerCase() === "textarea" || 
+        (activeElement.tagName.toLowerCase() === "input" && activeElement.type === "text")) {
+        cursorPos = activeElement.selectionStart;
+    } else {
+        const selection = window.getSelection();
+        cursorPos = selection.anchorOffset;
+    }
+    
+    const newText = currentText.substring(0, cursorPos) + 
+                   remainingText + 
+                   currentText.substring(cursorPos);
+    
+    setElementText(activeElement, newText, cursorPos + remainingText.length, cursorPos + remainingText.length);
+    
     activeSpan.remove();
     activeSpan = null;
     remainingText = "";
@@ -272,7 +352,7 @@ function mergeSpanIntoTextarea() {
 
 // Listen for user input instead of keydown to prevent double input
 document.addEventListener("input", (event) => {
-    if (event.target === activeTextArea) {
+    if (event.target === activeElement) {
         handleTyping(event);
     }
 });
