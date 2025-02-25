@@ -23,7 +23,7 @@ const chat = {
             role: "user",
             parts: [
                 {
-                    text: "System prompt: You are an AI that completes user-written text. You do not modify or repeat existing text—only generate what comes next. You are a helpful assistant that completes text based on the user's input."
+                    text: "System prompt: You are an AI that completes user-written text. You do not modify or repeat existing text—only generate what comes next. You are a helpful assistant that completes text based on the user's input. Also start with space if the given text ends with a complete word."
                 }
             ]
         },
@@ -46,6 +46,14 @@ const chat = {
         {
             role: "model",
             parts: [{ text: " thanks for asking." }]
+        },
+        {
+            role: "user",
+            parts: [{ text: "" }]
+        },
+        {
+            role: "model",
+            parts: [{ text: "" }]
         }
     ]
 };
@@ -64,7 +72,7 @@ async function generateText(existingText) {
     });
 
     const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GOOGLE_API_KEY}`,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -73,6 +81,8 @@ async function generateText(existingText) {
     );
 
     if (!response.ok) {
+        const error = await response.json();
+        console.error("API Error Details:", error);
         throw new Error("Network response was not ok");
     }
 
@@ -230,6 +240,7 @@ const debouncedGenerateSuggestion = debounce(async () => {
     if (!activeTextArea || activeSpan) return;
     
     const existingText = activeTextArea.value;
+    if (!existingText) return;
     try {
         const generatedText = await generateText(existingText);
         if (generatedText) {
